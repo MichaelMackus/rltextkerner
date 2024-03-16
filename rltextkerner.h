@@ -103,22 +103,6 @@ GlyphWithKerning CreateGlyphWithKerning(FontWithKerning font, int codepoint, flo
     return glyph;
 }
 
-void UpdateFontWithKerningBitmaps(FontWithKerning *font, int fontSize)
-{
-    float fontScale = stbtt_ScaleForPixelHeight(font->info, fontSize);
-    for (int i=0; i<font->glyphCount; i++) {
-        GlyphWithKerning *glyph = &font->glyphs[i];
-        ++glyph->imageCount;
-        Image *images = RL_REALLOC(glyph->images, glyph->imageCount * sizeof(*glyph->images));
-        if (images) {
-            glyph->images = images;
-            glyph->images[glyph->imageCount - 1] = CreateGlyphImageWithKerning(*font, glyph->value, fontScale);
-        } else {
-            TraceLog(LOG_WARNING, "FONT: Error updating font glyph memory!");
-        }
-    }
-}
-
 FontWithKerning LoadFontWithKerning(const char *fileName, int baseFontSize)
 {
     return LoadFontWithKerningEx(fileName, baseFontSize, NULL, 0);
@@ -144,10 +128,7 @@ FontWithKerning LoadFontWithKerningEx(const char *fileName, int baseFontSize, co
         return font;
     }
 
-    font = LoadFontWithKerningFromMemory(fileData, baseFontSize, dataSize, codepoints, codepointCount);
-    /* free(fileData); */
-
-    return font;
+    return LoadFontWithKerningFromMemory(fileData, baseFontSize, dataSize, codepoints, codepointCount);
 }
 
 FontWithKerning LoadFontWithKerningFromMemory(const unsigned char *fileData, int baseFontSize, int dataSize, const int *codepoints, int codepointCount)
@@ -180,6 +161,22 @@ FontWithKerning LoadFontWithKerningFromMemory(const unsigned char *fileData, int
     }
 
     return font;
+}
+
+void UpdateFontWithKerningBitmaps(FontWithKerning *font, int fontSize)
+{
+    float fontScale = stbtt_ScaleForPixelHeight(font->info, fontSize);
+    for (int i=0; i<font->glyphCount; i++) {
+        GlyphWithKerning *glyph = &font->glyphs[i];
+        ++glyph->imageCount;
+        Image *images = RL_REALLOC(glyph->images, glyph->imageCount * sizeof(*glyph->images));
+        if (images) {
+            glyph->images = images;
+            glyph->images[glyph->imageCount - 1] = CreateGlyphImageWithKerning(*font, glyph->value, fontScale);
+        } else {
+            TraceLog(LOG_WARNING, "FONT: Error updating font glyph memory!");
+        }
+    }
 }
 
 void UnloadFontWithKerning(FontWithKerning font)
@@ -322,7 +319,7 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                     glyphBitmap = stbtt_GetGlyphBitmap(font.info,
                             fontScale,
                             fontScale,
-                            stbtt_FindGlyphIndex(font.info, codepoint), NULL, NULL, NULL, NULL);
+                            glyph.index, NULL, NULL, NULL, NULL);
                 }
 
                 int glyphOffset = 0;
