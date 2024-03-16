@@ -1,0 +1,4 @@
+*.o
+example/text
+example/text-cpp
+example/no-kerning
