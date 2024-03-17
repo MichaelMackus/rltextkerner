@@ -273,6 +273,8 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
         // handle newline characters
         if (codepoint == '\n') {
             // new line - first reset x to first column and advance y
+            lastSpaceX = 0;
+            lastSpaceIndex = 0;
             x = 0;
             y += yInc;
         // mark word seen in current x pos
