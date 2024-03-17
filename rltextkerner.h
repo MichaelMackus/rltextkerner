@@ -293,16 +293,16 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
             }
             float xInc = kern * fontScale + glyph.advanceX * fontScale;
 
-            // compute yOffset and byte offset into current bitmap position (different characters have different heights)
+            // compute the glyph dimensions & subpixel shift for the glyph
             int cX1, cY1, cX2, cY2;
-            float xShift = x - (float) floor(x);
-            if (subpixel) stbtt_GetGlyphBitmapBoxSubpixel(font.info, glyph.index, fontScale, fontScale, xShift, 0, &cX1, &cY1, &cX2, &cY2);
+            float subpixelShift = x - (float) floor(x);
+            if (subpixel) stbtt_GetGlyphBitmapBoxSubpixel(font.info, glyph.index, fontScale, fontScale, subpixelShift, 0, &cX1, &cY1, &cX2, &cY2);
             else stbtt_GetGlyphBitmapBox(font.info, glyph.index, fontScale, fontScale, &cX1, &cY1, &cX2, &cY2);
-            int yOffset = y + ascent + cY1;
-            int byteOffset = floor(x) + roundf(glyph.lsb * fontScale) + (yOffset * maxWidth);
             int glyphWidth = cX2 - cX1;
             int glyphHeight = cY2 - cY1;
 
+            // calculate offset index in our destination bitmap
+            int bitmapOffset = floor(x) + roundf(glyph.lsb * fontScale) + ((y + ascent + cY1) * maxWidth);
             if (ceil(x + xInc) < maxWidth) {
                 x = x + xInc;
                 if (ceil(x) > imageWidth) imageWidth = ceil(x);
@@ -324,7 +324,7 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                         glyphBitmap = stbtt_GetGlyphBitmapSubpixel(font.info,
                                 fontScale,
                                 fontScale,
-                                xShift,
+                                subpixelShift,
                                 0,
                                 glyph.index, NULL, NULL, NULL, NULL);
                     else
@@ -334,20 +334,22 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                                 glyph.index, NULL, NULL, NULL, NULL);
                 }
 
-                int glyphOffset = 0;
+                // draw the glyph onto the destination bitmap
                 if (glyphBitmap) {
+                    int glyphOffset = 0;
                     for (int y = 0; y < glyphHeight; y++) {
                         for (int x = 0; x < glyphWidth; x++) {
                             if (glyphBitmap[glyphOffset + x] != 0) {
-                                bitmap[byteOffset + x] = glyphBitmap[glyphOffset + x];
+                                bitmap[bitmapOffset + x] = glyphBitmap[glyphOffset + x];
                             }
                         }
-                        byteOffset += maxWidth;
+                        bitmapOffset += maxWidth;
                         glyphOffset += glyphWidth;
                     }
                 } else {
                     TraceLog(LOG_WARNING, "FONT: Error generating char bitmap for codepoint: %i", glyph.value);
                 }
+
                 if (bitmapAllocated == 1) free(glyphBitmap);
             } else if (wrap != 0) {
                 if (lastSpaceX > 0) {
@@ -367,7 +369,7 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                 // new line - first reset x to first column and advance y
                 x = 0;
                 y += yInc;
-                continue;
+                continue; // don't advance character index
             }
         }
 
