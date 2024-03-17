@@ -348,13 +348,14 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                         bitmapOffset += maxWidth;
                     }
                     // reset character pointer back to start of last word
-                    i = lastSpaceIndex;
+                    i = lastSpaceIndex + 1;
                     lastSpaceX = 0;
                     lastSpaceIndex = 0;
                 }
                 // new line - first reset x to first column and advance y
                 x = 0;
                 y += yInc;
+                continue;
             }
         }
 
