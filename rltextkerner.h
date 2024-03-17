@@ -89,20 +89,6 @@ Image CreateGlyphImageWithKerning(FontWithKerning font, int codepoint, float fon
     return image;
 }
 
-GlyphWithKerning CreateGlyphWithKerning(FontWithKerning font, int codepoint, float fontScale)
-{
-    GlyphWithKerning glyph = { 0 };
-    glyph.value = codepoint;
-    glyph.index = stbtt_FindGlyphIndex(font.info, codepoint);
-    stbtt_GetGlyphHMetrics(font.info, glyph.index, &glyph.advanceX, &glyph.lsb);
-
-    glyph.imageCount = 1;
-    glyph.images = RL_MALLOC(sizeof(*glyph.images));
-    glyph.images[0] = CreateGlyphImageWithKerning(font, codepoint, fontScale);
-
-    return glyph;
-}
-
 FontWithKerning LoadFontWithKerning(const char *fileName, int baseFontSize)
 {
     return LoadFontWithKerningEx(fileName, baseFontSize, NULL, 0);
@@ -148,7 +134,14 @@ FontWithKerning LoadFontWithKerningFromMemory(const unsigned char *fileData, int
                 if (codepoints == NULL) codepoint = i + 32;
                 else codepoint = codepoints[i];
                 float fontScale = stbtt_ScaleForPixelHeight(font.info, baseFontSize);
-                font.glyphs[i] = CreateGlyphWithKerning(font, codepoint, fontScale);
+                GlyphWithKerning glyph = { 0 };
+                glyph.value = codepoint;
+                glyph.index = stbtt_FindGlyphIndex(font.info, codepoint);
+                stbtt_GetGlyphHMetrics(font.info, glyph.index, &glyph.advanceX, &glyph.lsb);
+                glyph.imageCount = 1;
+                glyph.images = RL_MALLOC(sizeof(*glyph.images));
+                glyph.images[0] = CreateGlyphImageWithKerning(font, codepoint, fontScale);
+                font.glyphs[i] = glyph;
             }
             TraceLog(LOG_INFO, "FONT: TTF font glyphs loaded successfully (%i glyphs)", font.glyphCount);
         } else {
@@ -269,7 +262,10 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
         GlyphWithKerning glyph = GetGlyphWithKerning(font, codepoint);
         if (glyph.index == 0) {
             TraceLog(LOG_WARNING, "FONT: Unable to find glyph for codepoint %d", codepoint);
-            glyph = CreateGlyphWithKerning(font, codepoint, fontScale);
+            GlyphWithKerning glyph = { 0 };
+            glyph.value = codepoint;
+            glyph.index = stbtt_FindGlyphIndex(font.info, codepoint);
+            stbtt_GetGlyphHMetrics(font.info, glyph.index, &glyph.advanceX, &glyph.lsb);
         }
 
         // handle newline characters
