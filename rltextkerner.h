@@ -240,6 +240,8 @@ GlyphWithKerning GetGlyphWithKerning(FontWithKerning font, int codepoint)
 Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap, int subpixel)
 {
     assert(font.info);
+    assert(maxWidth > 0);
+    assert(maxHeight > 0);
 
     // bitmap for writing the resulting image data
     char *bitmap = RL_CALLOC(maxWidth * maxHeight, sizeof(unsigned char));
