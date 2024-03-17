@@ -280,9 +280,9 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
             lastSpaceX = x;
             lastSpaceIndex = i;
             if (x < maxWidth) x += glyph.advanceX * fontScale; // conditional to prevent overflow
-        // populate glyph with kerning value
+        // draw the glyph and handle word wrapping
         } else {
-            // add kerning & advance x
+            // add kerning & calculate x increment for this glyph
             int kern = 0;
             if (i < codepointsCount - 1) {
                 // lookup kerning if two characters side by side
@@ -291,84 +291,89 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
             }
             float xInc = kern * fontScale + glyph.advanceX * fontScale;
 
+            // handle word wrap
+            if (ceil(x + xInc) >= maxWidth) {
+                if (wrap) {
+                    if (lastSpaceX > 0) {
+                        // erase last part of bitmap where the last part of the broken word is
+                        int bitmapOffset = y*maxWidth;
+                        for (int y = 0; y < yInc; y++) {
+                            for (int x = lastSpaceX; x < maxWidth; x++) {
+                                bitmap[bitmapOffset + x] = 0;
+                            }
+                            bitmapOffset += maxWidth;
+                        }
+                        // reset character pointer back to start of last word
+                        i = lastSpaceIndex + 1;
+                        lastSpaceX = 0;
+                        lastSpaceIndex = 0;
+                    }
+                    // new line - first reset x to first column and advance y
+                    x = 0;
+                    y += yInc;
+                    continue;
+                } else {
+                    // don't wrap - just skip character until we get to newline
+                    x = maxWidth;
+                    ++i;
+                    continue;
+                }
+            }
+
             // compute the glyph dimensions & subpixel shift for the glyph
             int cX1, cY1, cX2, cY2;
             float subpixelShift = x - (float) floor(x);
-            if (subpixel) stbtt_GetGlyphBitmapBoxSubpixel(font.info, glyph.index, fontScale, fontScale, subpixelShift, 0, &cX1, &cY1, &cX2, &cY2);
-            else stbtt_GetGlyphBitmapBox(font.info, glyph.index, fontScale, fontScale, &cX1, &cY1, &cX2, &cY2);
-            int glyphWidth = cX2 - cX1;
-            int glyphHeight = cY2 - cY1;
+            stbtt_GetGlyphBitmapBoxSubpixel(font.info,
+                    glyph.index,
+                    fontScale,
+                    fontScale,
+                    subpixel ? subpixelShift : 0,
+                    0, &cX1, &cY1, &cX2, &cY2);
 
             // calculate offset index in our destination bitmap
             int bitmapOffset = floor(x) + roundf(glyph.lsb * fontScale) + ((y + ascent + cY1) * maxWidth);
-            if (ceil(x + xInc) < maxWidth) {
-                x = x + xInc;
-                if (ceil(x) > imageWidth) imageWidth = ceil(x);
+            x = x + xInc;
+            if (ceil(x) > imageWidth) imageWidth = ceil(x);
 
-                // find image for corresponding font size in glyph
-                unsigned char *glyphBitmap = NULL;
-                for (int i=0; i < glyph.imageCount; i++) {
-                    if (glyph.images[i].width == glyphWidth && glyph.images[i].height == glyphHeight) {
-                        glyphBitmap = glyph.images[i].data;
-                        break;
-                    }
+            // find image for corresponding font size in glyph
+            int glyphWidth = cX2 - cX1;
+            int glyphHeight = cY2 - cY1;
+            unsigned char *glyphBitmap = NULL;
+            for (int i=0; i < glyph.imageCount; i++) {
+                if (glyph.images[i].width == glyphWidth && glyph.images[i].height == glyphHeight) {
+                    glyphBitmap = glyph.images[i].data;
+                    break;
                 }
-
-                // if image wasn't found, generate a new one
-                int bitmapAllocated = 0;
-                if (glyphBitmap == NULL) {
-                    bitmapAllocated = 1;
-                    if (subpixel)
-                        glyphBitmap = stbtt_GetGlyphBitmapSubpixel(font.info,
-                                fontScale,
-                                fontScale,
-                                subpixelShift,
-                                0,
-                                glyph.index, NULL, NULL, NULL, NULL);
-                    else
-                        glyphBitmap = stbtt_GetGlyphBitmap(font.info,
-                                fontScale,
-                                fontScale,
-                                glyph.index, NULL, NULL, NULL, NULL);
-                }
-
-                // draw the glyph onto the destination bitmap
-                if (glyphBitmap) {
-                    int glyphOffset = 0;
-                    for (int y = 0; y < glyphHeight; y++) {
-                        for (int x = 0; x < glyphWidth; x++) {
-                            if (glyphBitmap[glyphOffset + x] != 0) {
-                                bitmap[bitmapOffset + x] = glyphBitmap[glyphOffset + x];
-                            }
-                        }
-                        bitmapOffset += maxWidth;
-                        glyphOffset += glyphWidth;
-                    }
-                } else {
-                    TraceLog(LOG_WARNING, "FONT: Error generating char bitmap for codepoint: %i", glyph.value);
-                }
-
-                if (bitmapAllocated == 1) free(glyphBitmap);
-            } else if (wrap != 0) {
-                if (lastSpaceX > 0) {
-                    // erase last part of bitmap where the last part of the broken word is
-                    int bitmapOffset = y*maxWidth;
-                    for (int y = 0; y < yInc; y++) {
-                        for (int x = lastSpaceX; x < maxWidth; x++) {
-                            bitmap[bitmapOffset + x] = 0;
-                        }
-                        bitmapOffset += maxWidth;
-                    }
-                    // reset character pointer back to start of last word
-                    i = lastSpaceIndex + 1;
-                    lastSpaceX = 0;
-                    lastSpaceIndex = 0;
-                }
-                // new line - first reset x to first column and advance y
-                x = 0;
-                y += yInc;
-                continue; // don't advance character index
             }
+
+            // if image wasn't found, generate a new one
+            int bitmapAllocated = 0;
+            if (glyphBitmap == NULL) {
+                bitmapAllocated = 1;
+                glyphBitmap = stbtt_GetGlyphBitmapSubpixel(font.info, fontScale,
+                        fontScale,
+                        subpixel ? subpixelShift : 0,
+                        0,
+                        glyph.index, NULL, NULL, NULL, NULL);
+            }
+
+            // draw the glyph onto the destination bitmap
+            if (glyphBitmap) {
+                int glyphOffset = 0;
+                for (int y = 0; y < glyphHeight; y++) {
+                    for (int x = 0; x < glyphWidth; x++) {
+                        if (glyphBitmap[glyphOffset + x] != 0) {
+                            bitmap[bitmapOffset + x] = glyphBitmap[glyphOffset + x];
+                        }
+                    }
+                    bitmapOffset += maxWidth;
+                    glyphOffset += glyphWidth;
+                }
+            } else {
+                TraceLog(LOG_WARNING, "FONT: Error generating char bitmap for codepoint: %i", glyph.value);
+            }
+
+            if (bitmapAllocated == 1) free(glyphBitmap);
         }
 
         ++i;
