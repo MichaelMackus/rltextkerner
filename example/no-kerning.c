@@ -13,18 +13,7 @@ int main()
     Font bodyFont = LoadFontEx("font/NotoSans-Light.ttf", 60, NULL, 0);
 
     SetTargetFPS(60);
-    int yOffset = 0;
     while (!WindowShouldClose()) {
-        if (IsKeyDown(KEY_DOWN)) {
-            yOffset -= 10;
-        }
-        if (IsKeyDown(KEY_UP)) {
-            yOffset += 10;
-        }
-        if (GetMouseWheelMove()) {
-            yOffset += GetMouseWheelMove() * 30;
-        }
-
         BeginDrawing();
             ClearBackground(BLACK);
 
@@ -37,6 +26,7 @@ int main()
     }
 
     UnloadFont(bodyFont);
+    CloseWindow();
 
     return 0;
 }
