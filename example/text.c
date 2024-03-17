@@ -10,7 +10,7 @@ int main()
     InitWindow(1920, 1080, "raylib test with font kerning");
     SetTraceLogLevel(LOG_DEBUG);
 
-    FontWithKerning bodyFont = LoadFontWithKerning("font/NotoSans-Regular.ttf", 32);
+    FontWithKerning bodyFont = LoadFontWithKerning("font/NotoSans-Light.ttf", 32);
     UpdateFontWithKerningBitmaps(&bodyFont, 60);
     UpdateFontWithKerningBitmaps(&bodyFont, 24);
     if (!bodyFont.info) return 1;
