@@ -65,10 +65,10 @@ void UpdateFontWithKerningBitmaps(FontWithKerning *font, int fontSize);
 // Free the font data
 void UnloadFontWithKerning(FontWithKerning font);
 
-Image KernText(const char *text, FontWithKerning font, int fontSize); // Kern text and produce greyscale image. Returns amount of characters rendered to image.
-Image KernTextWrapped(const char *text, FontWithKerning font, int fontSize, int maxWidth); // Kern text word wrapped to a max width (maxWidth = max width in pixels). Returns amount of characters rendered to image.
-Image KernTextEx(const char *text, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap); // Kern text advanced within maxWidth & maxHeight. Returns amount of characters rendered to image.
-Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap); // Kern UTF-8 codepoints (called via the above functions)
+Image KernText(const char *text, FontWithKerning font, int fontSize); // Kern text and produce greyscale image.
+Image KernTextWrapped(const char *text, FontWithKerning font, int fontSize, int maxWidth); // Kern text word wrapped to a max width (maxWidth = max width in pixels).
+Image KernTextEx(const char *text, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap, int subpixel); // Kern text advanced within maxWidth & maxHeight.
+Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap, int subpixel); // Kern UTF-8 codepoints (called via the above functions)
 
 #ifdef RLTEXTKERNER_IMPLEMENTATION
 
@@ -196,19 +196,19 @@ void UnloadFontWithKerning(FontWithKerning font)
 
 Image KernTextWrapped(const char *text, FontWithKerning font, int fontSize, int maxWidth)
 {
-    return KernTextEx(text, font, fontSize, maxWidth, GetScreenHeight(), 1);
+    return KernTextEx(text, font, fontSize, maxWidth, GetScreenHeight(), 1, 1);
 }
 
 Image KernText(const char *text, FontWithKerning font, int fontSize)
 {
-    return KernTextEx(text, font, fontSize, GetScreenWidth(), GetScreenHeight(), 0);
+    return KernTextEx(text, font, fontSize, GetScreenWidth(), GetScreenHeight(), 0, 1);
 }
 
-Image KernTextEx(const char *text, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap)
+Image KernTextEx(const char *text, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap, int subpixel)
 {
     int codepointsCount;
     int *codepoints = LoadCodepoints(text, &codepointsCount);
-    Image result = KernCodepoints(codepoints, codepointsCount, font, fontSize, maxWidth, maxHeight, wrap);
+    Image result = KernCodepoints(codepoints, codepointsCount, font, fontSize, maxWidth, maxHeight, wrap, subpixel);
     free(codepoints);
 
     return result;
@@ -237,7 +237,7 @@ GlyphWithKerning GetGlyphWithKerning(FontWithKerning font, int codepoint)
     return (GlyphWithKerning){ 0 };
 }
 
-Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap)
+Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning font, int fontSize, int maxWidth, int maxHeight, int wrap, int subpixel)
 {
     assert(font.info);
 
@@ -253,7 +253,7 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
     lineGap = roundf(lineGap * fontScale);
     yInc = ascent - descent + lineGap;
 
-    int x = 0;
+    float x = 0;
     int y = 0;
     int i = 0;
     int lastSpaceX = 0;
@@ -279,7 +279,7 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
         } else if (codepoint == ' ' || codepoint == '\t') {
             lastSpaceX = x;
             lastSpaceIndex = i;
-            if (x < maxWidth) x += roundf(glyph.advanceX*fontScale); // conditional to prevent overflow
+            if (x < maxWidth) x += glyph.advanceX * fontScale; // conditional to prevent overflow
         // populate glyph with kerning value
         } else {
             // add kerning & advance x
@@ -289,19 +289,21 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                 int glyphNextIndex = GetGlyphIndexWithKerning(font, codepoints[i + 1]);
                 kern = stbtt_GetGlyphKernAdvance(font.info, glyph.index, glyphNextIndex);
             }
-            int xInc = roundf(kern * fontScale) + roundf(glyph.advanceX * fontScale);
+            float xInc = kern * fontScale + glyph.advanceX * fontScale;
 
             // compute yOffset and byte offset into current bitmap position (different characters have different heights)
             int cX1, cY1, cX2, cY2;
-            stbtt_GetGlyphBitmapBox(font.info, glyph.index, fontScale, fontScale, &cX1, &cY1, &cX2, &cY2);
+            float xShift = x - (float) floor(x);
+            if (subpixel) stbtt_GetGlyphBitmapBoxSubpixel(font.info, glyph.index, fontScale, fontScale, xShift, 0, &cX1, &cY1, &cX2, &cY2);
+            else stbtt_GetGlyphBitmapBox(font.info, glyph.index, fontScale, fontScale, &cX1, &cY1, &cX2, &cY2);
             int yOffset = y + ascent + cY1;
-            int byteOffset = x + roundf(glyph.lsb * fontScale) + (yOffset * maxWidth);
+            int byteOffset = floor(x) + roundf(glyph.lsb * fontScale) + (yOffset * maxWidth);
             int glyphWidth = cX2 - cX1;
             int glyphHeight = cY2 - cY1;
 
-            if (x + xInc < maxWidth) {
+            if (ceil(x + xInc) < maxWidth) {
                 x = x + xInc;
-                if (x > imageWidth) imageWidth = x;
+                if (ceil(x) > imageWidth) imageWidth = ceil(x);
 
                 // find image for corresponding font size in glyph
                 unsigned char *glyphBitmap = NULL;
@@ -316,10 +318,18 @@ Image KernCodepoints(const int *codepoints, int codepointsCount, FontWithKerning
                 int bitmapAllocated = 0;
                 if (glyphBitmap == NULL) {
                     bitmapAllocated = 1;
-                    glyphBitmap = stbtt_GetGlyphBitmap(font.info,
-                            fontScale,
-                            fontScale,
-                            glyph.index, NULL, NULL, NULL, NULL);
+                    if (subpixel)
+                        glyphBitmap = stbtt_GetGlyphBitmapSubpixel(font.info,
+                                fontScale,
+                                fontScale,
+                                xShift,
+                                0,
+                                glyph.index, NULL, NULL, NULL, NULL);
+                    else
+                        glyphBitmap = stbtt_GetGlyphBitmap(font.info,
+                                fontScale,
+                                fontScale,
+                                glyph.index, NULL, NULL, NULL, NULL);
                 }
 
                 int glyphOffset = 0;

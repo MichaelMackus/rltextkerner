@@ -18,8 +18,7 @@ performance, mostly by indexing the font by font size with pre-rendered
 bitmaps. See the example folder for usage.
 
 In my experience, this results in a better rendering of the font than the
-current SDL TTF library. It can definitely be improved, though. I'm not using
-subpixel rendering, and the code itself could be cleaned up. YMMV.
+current SDL TTF library.
 
 Note that stb_truetype.h and raylib.h are included here for convenience. You
 should probably grab the latest versions of those, and you will also need to
